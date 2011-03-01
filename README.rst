@@ -31,6 +31,14 @@ I recomend you read the testing code if you want to understand the internals
 of Redmodel.
 
 
+Installation
+------------
+
+Redmodel requires redis-py. Install it first. Then run:
+
+    sudo python ./setup.py install
+
+
 Quick Example
 -------------
 
