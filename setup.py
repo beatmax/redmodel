@@ -27,9 +27,9 @@ setup(name='redmodel',
       #test_suite='test.models.all_tests',
       classifiers=[
         'Development Status :: 4 - Beta',
-        'Environment :: Console',
+        'Environment :: Other Environment',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: GPL License',
+        'License :: OSI Approved :: GNU Library or Lesser General Public License (LGPL)',
         'Operating System :: OS Independent',
         'Programming Language :: Python'],
     )
