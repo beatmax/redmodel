@@ -68,6 +68,9 @@ class Handle(object):
             else:
                 raise
 
+def ishandle(obj, model):
+    return isinstance(obj, Handle) and obj.model is model
+
 class ModelMeta(type):
     def __new__(cls, name, bases, attrs):
         attr_dict = {}
