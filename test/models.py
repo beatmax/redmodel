@@ -357,10 +357,11 @@ class ModelReadTestCase(ModelTestCase):
         self.assertEqual(handle, Gang.by_id(1))
 
         self.assertTrue(not Gang.find(members__contains = Fighter.by_id(3)))
-        handle = Gang.find(members__contains = hfighter2)
+        handle = Gang.find(members__contains = Fighter(hfighter2))
         self.assertEqual(handle, Gang.by_id(1))
 
-        city_gangs = Gang.multifind(cities__contains = City.by_id(3))
+        city3 = City(City.by_id(3))
+        city_gangs = Gang.multifind(cities__contains = city3)
         self.assertEqual(city_gangs, set([Gang.by_id(1)]))
 
         handle = FighterSkillList.by_owner(fighter1)

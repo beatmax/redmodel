@@ -133,13 +133,14 @@ class Model(object):
         fldcond = kwargs.keys()[0].split('__')
         fld = fldcond[0]
         val = kwargs.values()[0]
+        f = cls.__dict__[fld]
         if isinstance(val, Handle):
-            f = cls.__dict__[fld]
             assert not hasattr(f, 'target_type') or val.model is f.target_type
             val = val.oid
-        elif __debug__:
-            f = cls.__dict__[fld]
+        else:
             assert not hasattr(f, 'target_type') or type(val) is f.target_type
+            if isinstance(val, Model):
+                val = val.oid
         if len(fldcond) == 1:
             k = 'u:{0}:{1}'.format(cls.__name__, fld)
             return Handle(cls, ds.hget(k, val))
@@ -155,13 +156,14 @@ class Model(object):
         fldcond = kwargs.keys()[0].split('__')
         fld = fldcond[0]
         val = kwargs.values()[0]
+        f = cls.__dict__[fld]
         if isinstance(val, Handle):
-            f = cls.__dict__[fld]
             assert not hasattr(f, 'target_type') or val.model is f.target_type
             val = val.oid
-        elif __debug__:
-            f = cls.__dict__[fld]
+        else:
             assert not hasattr(f, 'target_type') or type(val) is f.target_type
+            if isinstance(val, Model):
+                val = val.oid
         if len(fldcond) == 1:
             k = 'i:{0}:{1}:{2}'.format(cls.__name__, fld, val)
             return set(map(lambda m: Handle(cls, m), ds.smembers(k)))
