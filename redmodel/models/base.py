@@ -194,7 +194,7 @@ class Model(object):
         else:
             h = args[0]
             assert isinstance(h, Handle), type(h)
-            assert h.model == cls, 'Expected ' + str(cls.__name__) + ' handle, not ' + str(h.model.__name__)
+            assert h.model is cls, 'Expected ' + str(cls.__name__) + ' handle, not ' + str(h.model.__name__)
             return h.load()
 
     def __repr__(self):
@@ -215,7 +215,7 @@ class Model(object):
                 if isinstance(v, Model):
                     v = v.handle()
                 if isinstance(v, Handle):
-                    assert v.model == a.target_type
+                    assert v.model is a.target_type
                 else:
                     v = a.target_type.by_id(v)
             self.__dict__[a.name] = v
@@ -228,7 +228,7 @@ class Model(object):
                 if isinstance(v, Model):
                     v = v.handle()
                 if isinstance(v, Handle):
-                    assert v.model == a.target_type
+                    assert v.model is a.target_type
                 else:
                     v = a.target_type.by_id(v)
             self.__dict__[a.name] = v

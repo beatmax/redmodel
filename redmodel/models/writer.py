@@ -95,17 +95,17 @@ class ModelWriter(object):
             obj.__dict__[s.name] = SetHandle(key + ':' + s.name, s.target_type)
 
     def update(self, obj, **kwargs):
-        assert type(obj) == self.model and obj.oid is not None
+        assert type(obj) is self.model and obj.oid is not None
         assert len(kwargs) > 0
         data = obj.update_attributes_dict(**kwargs)
         self.__update_attrs(obj, data)
 
     def update_all(self, obj):
-        assert type(obj) == self.model and obj.oid is not None
+        assert type(obj) is self.model and obj.oid is not None
         self.__update_attrs(obj, obj.make_dict())
 
     def delete(self, obj):
-        assert type(obj) == self.model and obj.oid is not None
+        assert type(obj) is self.model and obj.oid is not None
         if not ds.exists(obj.key):
             raise NotFoundError(obj.key)
         pl = ds.pipeline(True)
@@ -145,10 +145,10 @@ class ContainerFieldWriter(ContainerWriter):
 
 class ListFieldWriter(ContainerFieldWriter, ListWriter):
     def __init__(self, field, element_writer = None):
-        assert type(field) == ListField
+        assert type(field) is ListField
         ContainerFieldWriter.__init__(self, field, element_writer)
 
 class SetFieldWriter(ContainerFieldWriter, SetWriter):
     def __init__(self, field, element_writer = None):
-        assert type(field) == SetField
+        assert type(field) is SetField
         ContainerFieldWriter.__init__(self, field, element_writer)
