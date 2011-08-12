@@ -106,24 +106,28 @@ the fighters.
 
 ::
 
-    from redmodel.models import Model, Attribute, IntegerField, ReferenceField, ListField, SetField, Recursive
+    from redmodel.models import Model, Attribute, BooleanField, IntegerField, FloatField, UTCDateTimeField, ReferenceField, ListField, SetField, Recursive
 
-    # City with a name and a list of connections to other cities
+    # City with a name, a boolean, and a list of connections to other cities
     # (recursive references).
     class City(Model):
         name = Attribute()
+        coast = BooleanField()
         connections = ListField(Recursive)
 
-    # Fighter with name, age, weight, and current city.
+    # Fighter with name, age, weight, join time, and current city.
     # - The name is defined as unique, so fighters are indexed by name (we can
     #   find a fighter by name), and it cannot be repeated. The index is a
     #   redis hash.
+    # - The datetime field is stored as an integer (no microseconds). It may be
+    #   better to use an IntegerField directly, in order to avoid conversions.
     # - The current city is indexed, so we can find which fighters are in a
     #   city. This index is a collection of redis sets.
     class Fighter(Model):
         name = Attribute(unique = True)
         age = IntegerField()
-        weight = IntegerField()
+        weight = FloatField()
+        joined = UTCDateTimeField()
         city = ReferenceField(City, indexed = True)
 
     # Gang with a name and a set of member fighters.
@@ -175,9 +179,9 @@ Create some cities:
 
     from redmodel.models import ModelWriter
     city_writer = ModelWriter(City)
-    c1 = City(name = 'Reixte')
-    c2 = City(name = 'Damtoo')
-    c3 = City(name = 'Toynbe')
+    c1 = City(name = 'Reixte', coast = True)
+    c2 = City(name = 'Damtoo', coast = True)
+    c3 = City(name = 'Toynbe', coast = False)
     map(city_writer.create, [c1, c2, c3])
 
 Create connections between cities:
@@ -195,9 +199,11 @@ Create some fighters:
 
 ::
 
+    from datetime import datetime
     fighter_writer = ModelWriter(Fighter)
-    f1 = Fighter(name = 'Alice', age = 29, weight = 73, city = City.by_id(1))
-    f2 = Fighter(name = 'Bob', age = 32, weight = 98, city = City.by_id(1))
+    dtime = datetime.utcfromtimestamp(1400000000)
+    f1 = Fighter(name = 'Alice', age = 29, weight = 73.2, joined = dtime, city = City.by_id(1))
+    f2 = Fighter(name = 'Bob', age = 32, weight = 98, joined = dtime, city = City.by_id(1))
     map(fighter_writer.create, [f1, f2])
 
 Create a gang and add both fighters to it:
@@ -348,7 +354,7 @@ Object attributes can be updated in two ways:
 
     # Method 1:
     fighter = Fighter(Fighter.by_id(2))
-    fighter_writer.update(fighter, name = 'Robert', weight = 99)
+    fighter_writer.update(fighter, name = 'Robert', weight = 99.9)
 
     # Method 2:
     fighter = Fighter(Fighter.by_id(2))

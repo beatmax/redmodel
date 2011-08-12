@@ -16,6 +16,8 @@
 """
 
 import unittest
+import sys
+from datetime import datetime
 from test import example_data
 from test.example_models import City, Fighter, Gang, Skill, SkillInstance, FighterSkillList
 from redmodel.models import SetField, ModelWriter, ListFieldWriter, SetFieldWriter, NotFoundError, UniqueError, BadArgsError
@@ -103,15 +105,15 @@ class ModelWriteTestCase(ModelTestCase):
     def test_write(self):
         # basic model
         city_writer = ModelWriter(City)
-        c1 = City(name = 'Reixte')
-        c2 = City(name = 'Damtoo')
-        c3 = City(name = 'Toynbe')
+        c1 = City(name = 'Reixte', coast = True)
+        c2 = City(name = 'Damtoo', coast = True)
+        c3 = City(name = 'Toynbe', coast = False)
         map(city_writer.create, [c1, c2, c3])
         self.assertEqual((c1.oid, c2.oid, c3.oid), ('1', '2', '3'))
         self.assertEqual(City(City.by_id(1)).oid, '1')
-        self.assertEqual(ds.hgetall('City:1'), {'name': 'Reixte'})
-        self.assertEqual(ds.hgetall('City:2'), {'name': 'Damtoo'})
-        self.assertEqual(ds.hgetall('City:3'), {'name': 'Toynbe'})
+        self.assertEqual(ds.hgetall('City:1'), {'name': 'Reixte', 'coast': '1'})
+        self.assertEqual(ds.hgetall('City:2'), {'name': 'Damtoo', 'coast': '1'})
+        self.assertEqual(ds.hgetall('City:3'), {'name': 'Toynbe', 'coast': '0'})
 
         # list field referencing model
         city_connections_writer = ListFieldWriter(City.connections)
@@ -125,9 +127,12 @@ class ModelWriteTestCase(ModelTestCase):
 
         # unique indexed field
         fighter_writer = ModelWriter(Fighter)
-        f1 = Fighter(name = 'Alice', age = 29, weight = 73, city = City.by_id(1))
-        f2 = Fighter(name = 'Bob', age = 32, weight = 98, city = City.by_id(1))
+        dtime = datetime.utcfromtimestamp(1400000000)
+        f1 = Fighter(name = 'Alice', age = 29, weight = 73.2, joined = dtime, city = City.by_id(1))
+        f2 = Fighter(name = 'Bob', age = 32, weight = 98, joined = dtime, city = City.by_id(1))
         map(fighter_writer.create, [f1, f2])
+        self.assertEqual(ds.hgetall('Fighter:1'), {'name': 'Alice', 'age': '29', 'weight': '73.2', 'joined': '1400000000', 'city': '1'})
+        self.assertEqual(ds.hgetall('Fighter:2'), {'name': 'Bob', 'age': '32', 'weight': '98', 'joined': '1400000000', 'city': '1'})
         self.assertEqual(ds.hgetall('u:Fighter:name'), {'Alice': '1', 'Bob': '2'})
 
         # indexed reference field
@@ -137,7 +142,7 @@ class ModelWriteTestCase(ModelTestCase):
         self.assertRaises(BadArgsError, Fighter, name = 'MissingWeight', age = 30, city = 1)
 
         # unique attribute
-        f3 = Fighter(name = 'Bob', age = 30, weight = 80, city = 1)
+        f3 = Fighter(name = 'Bob', age = 30, weight = 80, joined = dtime, city = 1)
         self.assertRaises(UniqueError, fighter_writer.create, f3)
 
         # basic model
@@ -184,7 +189,7 @@ class ModelWriteTestCase(ModelTestCase):
         if __debug__:
             f3skills = FighterSkillList()
             self.assertRaises(AssertionError, fighter_skill_list_writer.create, f3skills)
-            f3 = Fighter(name = 'Unsaved', age = 0, weight = 0, city = 1)
+            f3 = Fighter(name = 'Unsaved', age = 0, weight = 0, joined = None, city = 1)
             self.assertRaises(AssertionError, fighter_skill_list_writer.create, f3skills, f3)
 
         # owned model list field
@@ -219,13 +224,13 @@ class ModelWriteTestCase(ModelTestCase):
         fighter2 = Fighter(Fighter.by_id(2))
         self.assertEqual(fighter2.name, 'Bobby')
         self.assertEqual(fighter2.age, 41)
-        fighter_writer.update(fighter2, name = 'Robert', weight = 99)
+        fighter_writer.update(fighter2, name = 'Robert', weight = 99.9)
         self.assertEqual(ds.hgetall('u:Fighter:name'), {'Alice': '1', 'Robert': '2'})
         self.assertEqual(fighter2.name, 'Robert')
-        self.assertEqual(fighter2.weight, 99)
+        self.assertEqual(fighter2.weight, 99.9)
         fighter3 = Fighter(Fighter.by_id(2))
         self.assertEqual(fighter3.name, 'Robert')
-        self.assertEqual(fighter3.weight, 99)
+        self.assertEqual(fighter3.weight, 99.9)
 
         # update indexed attribute
         self.assertEqual(ds.smembers('i:Fighter:city:1'), set(['1', '2']))
@@ -325,6 +330,9 @@ class ModelReadTestCase(ModelTestCase):
         self.assertEqual(fighter1.name, 'Alice')
         self.assertEqual(fighter2.name, 'Bob')
 
+        dtime = datetime.utcfromtimestamp(1400000000)
+        self.assertEqual(fighter2.joined, dtime)
+
         handle1 = Fighter.by_id(1)
         handle2 = Fighter.by_id(2)
         handle3 = Fighter.by_id(1)
@@ -335,10 +343,12 @@ class ModelReadTestCase(ModelTestCase):
 
         city = City(fighter1.city)
         self.assertEqual(city.name, 'Reixte')
+        self.assertEqual(city.coast, True)
         conns = List(city.connections)
         self.assertEqual(len(conns), 2)
         city2 = City(conns[1])
         self.assertEqual(city2.name, 'Toynbe')
+        self.assertEqual(city2.coast, False)
 
         handle = Gang.by_id(999)
         self.assertRaises(NotFoundError, Gang, handle)
@@ -392,6 +402,8 @@ def all_tests():
 
 
 if __name__ == "__main__":
-    #suite = unittest.TestLoader().loadTestsFromTestCase(Test)
-    suite = all_tests()
-    unittest.TextTestRunner(verbosity=2).run(suite)
+    if len(sys.argv) > 1:
+        unittest.main()
+    else:
+        suite = all_tests()
+        unittest.TextTestRunner(verbosity=2).run(suite)

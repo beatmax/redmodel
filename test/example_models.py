@@ -1,22 +1,26 @@
-from redmodel.models import Model, Attribute, IntegerField, ReferenceField, ListField, SetField, Recursive
+from redmodel.models import Model, Attribute, BooleanField, IntegerField, FloatField, UTCDateTimeField, ReferenceField, ListField, SetField, Recursive
 from redmodel.containers import List, Set
 
-# City with a name and a list of connections to other cities
+# City with a name, a boolean, and a list of connections to other cities
 # (recursive references).
 class City(Model):
     name = Attribute()
+    coast = BooleanField()
     connections = ListField(Recursive)
 
-# Fighter with name, age, weight, and current city.
+# Fighter with name, age, weight, join time, and current city.
 # - The name is defined as unique, so fighters are indexed by name (we can
 #   find a fighter by name), and it cannot be repeated. The index is a
 #   redis hash.
+# - The datetime field is stored as an integer (no microseconds). It may be
+#   better to use an IntegerField directly, in order to avoid conversions.
 # - The current city is indexed, so we can find which fighters are in a
 #   city. This index is a collection of redis sets.
 class Fighter(Model):
     name = Attribute(unique = True)
     age = IntegerField()
-    weight = IntegerField()
+    weight = FloatField()
+    joined = UTCDateTimeField()
     city = ReferenceField(City, indexed = True)
 
 # Gang with a name and a set of member fighters.

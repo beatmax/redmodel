@@ -1,14 +1,15 @@
 from test.example_models import City, Fighter, Gang, Skill, SkillInstance, FighterSkillList
 from redmodel.models import ModelWriter, ListFieldWriter, SetFieldWriter
 from redmodel import connection as ds
+from datetime import datetime
 
 # --- City ---
 
 city_writer = ModelWriter(City)
 city_connections_writer = ListFieldWriter(City.connections)
 
-def create_city(name_):
-    city = City(name = name_)
+def create_city(name_, coast_):
+    city = City(name = name_, coast = coast_)
     city_writer.create(city)
     return city
 
@@ -25,7 +26,8 @@ def create_connection(city1, city2):
 fighter_writer = ModelWriter(Fighter)
 
 def create_fighter(name_):
-    f = Fighter(name = name_, age = 20, weight = 100, city = 1)
+    joined_ = datetime.utcfromtimestamp(1400000000)
+    f = Fighter(name = name_, age = 20, weight = 107.44, joined = joined_, city = 1)
     fighter_writer.create(f)
     return f
 
@@ -59,9 +61,9 @@ def add_gang_city(gang, city):
 def load():
     ds.flushdb()
 
-    c1 = create_city('Reixte')
-    c2 = create_city('Damtoo')
-    c3 = create_city('Toynbe')
+    c1 = create_city('Reixte', True)
+    c2 = create_city('Damtoo', True)
+    c3 = create_city('Toynbe', False)
     create_connection(c1, c2)
     create_connection(c1, c3)
 

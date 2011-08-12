@@ -15,6 +15,9 @@
     along with Redmodel.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from datetime import datetime
+import calendar
+
 class Attribute(object):
     def __init__(self, indexed = False, unique = False):
         self.indexed = indexed or unique
@@ -26,9 +29,35 @@ class Attribute(object):
     def typecast_for_write(self, value):
         return value
 
+class BooleanField(Attribute):
+    def typecast_for_read(self, value):
+        return bool(int(value))
+
+    def typecast_for_write(self, value):
+        return '1' if value else '0'
+
 class IntegerField(Attribute):
     def typecast_for_read(self, value):
         return int(value)
+
+class FloatField(Attribute):
+    def typecast_for_read(self, value):
+        return float(value)
+
+class UTCDateTimeField(Attribute):
+    """ UTC datetime without microseconds. 'None' is allowed (stored as 0).
+        Notice it may be better to store timestamps in IntegerField or
+        FloatField to avoid conversions. """
+    def typecast_for_read(self, value):
+        if value == '0':
+            return None
+        return datetime.utcfromtimestamp(float(value))
+
+    def typecast_for_write(self, value):
+        if value is None:
+            return 0
+        assert isinstance(value, datetime)
+        return calendar.timegm(value.utctimetuple())
 
 class ReferenceField(Attribute):
     def __init__(self, target_type, indexed = False, unique = False):
