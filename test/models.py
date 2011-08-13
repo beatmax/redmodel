@@ -345,7 +345,7 @@ class ModelReadTestCase(ModelTestCase):
         self.assertEqual(fighter1.name, 'Alice')
         self.assertEqual(fighter2.name, 'Bob')
 
-        dtime = datetime.utcfromtimestamp(1400000000)
+        dtime = datetime.utcfromtimestamp(1400000001)
         self.assertEqual(fighter2.joined, dtime)
 
         handle1 = Fighter.by_id(1)
@@ -463,6 +463,13 @@ class ModelReadTestCase(ModelTestCase):
         age_eq_b = Fighter.zrangebyscore('age', 20, 20)
         self.assertEqual(age_eq_a, [hfighter1])
         self.assertEqual(age_eq_a, age_eq_b)
+
+        joined_before_2014 = Fighter.zfind(joined__lt = datetime(2014, 1, 1))
+        self.assertEqual(joined_before_2014, [])
+        joined_before_2020 = Fighter.zfind(joined__lt = datetime(2020, 1, 1))
+        self.assertEqual(joined_before_2020, [hfighter2, hfighter1])
+        joined_in_201x = Fighter.zfind(joined__in = (datetime(2010, 1, 1), datetime(2020, 1, 1)))
+        self.assertEqual(joined_in_201x, [hfighter2, hfighter1])
 
         rev_age_in_a = Fighter.zrevrangebyscore('age', 23, 20)
         rev_age_in_b = Fighter.zrevrangebyscore('age', 23, 20, 0, 2)

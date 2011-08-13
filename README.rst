@@ -375,6 +375,8 @@ The convenience zfind method may be used instead of zrangebyscore:
     young_fighters = Fighter.zfind(age__lt = 25)
     mature_fighters = Fighter.zfind(age__gte = 40)
     in_their_twenties = Fighter.zfind(age__in = (20, 29))
+    age_match = Fighter.zfind(age = 23)
+    joined_before_2020 = Fighter.zfind(joined__lt = datetime(2020, 1, 1))
 
 Other available methods:
 

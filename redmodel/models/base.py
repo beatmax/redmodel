@@ -178,7 +178,13 @@ class Model(object):
         assert len(kwargs) == 1
         fldcond = kwargs.keys()[0].split('__')
         fld = fldcond[0]
+        f = cls.__dict__[fld]
         val = kwargs.values()[0]
+        if isinstance(val, tuple):
+            assert len(val) == 2
+            val = (f.typecast_for_write(val[0]), f.typecast_for_write(val[1]))
+        else:
+            val = f.typecast_for_write(val)
         if len(fldcond) == 1:
             return cls.zrangebyscore(fld, val, val)
         else:
