@@ -19,9 +19,10 @@ from datetime import datetime
 import calendar
 
 class Attribute(object):
-    def __init__(self, indexed = False, unique = False):
+    def __init__(self, indexed = False, unique = False, zindexed = False):
         self.indexed = indexed or unique
         self.unique = unique
+        self.zindexed = zindexed
 
     def typecast_for_read(self, value):
         return value

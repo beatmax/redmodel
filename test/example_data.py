@@ -25,9 +25,9 @@ def create_connection(city1, city2):
 
 fighter_writer = ModelWriter(Fighter)
 
-def create_fighter(name_):
+def create_fighter(name_, age_, weight_):
     joined_ = datetime.utcfromtimestamp(1400000000)
-    f = Fighter(name = name_, age = 20, weight = 107.44, joined = joined_, city = 1)
+    f = Fighter(name = name_, age = age_, weight = weight_, joined = joined_, city = 1)
     fighter_writer.create(f)
     return f
 
@@ -67,8 +67,8 @@ def load():
     create_connection(c1, c2)
     create_connection(c1, c3)
 
-    f1 = create_fighter('Alice')
-    f2 = create_fighter('Bob')
+    f1 = create_fighter('Alice', 20, 107.44)
+    f2 = create_fighter('Bob', 23, 102.923)
 
     g = create_gang('Ghetto Warriors', f1)
     add_member(g, f1)

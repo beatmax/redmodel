@@ -48,13 +48,24 @@ class ModelWriter(object):
             k = 'i:{0}:{1}:{2}'.format(self.modname, fld, val)
             pl.srem(k, oid)
 
+    def __zindex(self, pl, oid, fld, val):
+        k = 'z:{0}:{1}'.format(self.modname, fld)
+        pl.zadd(k, **{oid: val})
+
+    def __zunindex(self, pl, oid, fld):
+        k = 'z:{0}:{1}'.format(self.modname, fld)
+        pl.zrem(k, oid)
+
     def __unindex_all(self, pl, obj):
         for a in obj._attributes:
-            if a.indexed:
+            if a.indexed or a.zindexed:
                 fld = a.name
                 v = obj._indexed_values[fld]
                 if v is not None:
-                    self.__unindex(pl, obj.oid, fld, v, a.unique)
+                    if a.indexed:
+                        self.__unindex(pl, obj.oid, fld, v, a.unique)
+                    if a.zindexed:
+                        self.__zunindex(pl, obj.oid, fld)
 
     def __update_attrs(self, obj, data):
         if (len(data)):
@@ -70,12 +81,17 @@ class ModelWriter(object):
             pl.hmset(obj.key, data)
             for fld in data.iterkeys():
                 a = attr_dict[fld]
-                if a.indexed:
+                if a.indexed or a.zindexed:
                     v = data[fld]
                     oldv = obj._indexed_values[fld]
-                    if oldv is not None:
-                        self.__unindex(pl, obj.oid, fld, oldv, a.unique)
-                    self.__index(pl, obj.oid, fld, v, a.unique)
+                    if a.indexed:
+                        if oldv is not None:
+                            self.__unindex(pl, obj.oid, fld, oldv, a.unique)
+                        self.__index(pl, obj.oid, fld, v, a.unique)
+                    if a.zindexed:
+                        if oldv is not None:
+                            self.__zunindex(pl, obj.oid, fld)
+                        self.__zindex(pl, obj.oid, fld, v)
                     obj._indexed_values[fld] = v
             pl.execute()
 

@@ -123,11 +123,13 @@ the fighters.
     #   better to use an IntegerField directly, in order to avoid conversions.
     # - The current city is indexed, so we can find which fighters are in a
     #   city. This index is a collection of redis sets.
+    # - Attributes which are zindexed have a redis sorted set associated, so we
+    #   can execute queries like Fighter.zfind(age__lt = 30).
     class Fighter(Model):
         name = Attribute(unique = True)
-        age = IntegerField()
-        weight = FloatField()
-        joined = UTCDateTimeField()
+        age = IntegerField(zindexed = True)
+        weight = FloatField(zindexed = True)
+        joined = UTCDateTimeField(zindexed = True)
         city = ReferenceField(City, indexed = True)
 
     # Gang with a name and a set of member fighters.
@@ -342,6 +344,50 @@ Find in non unique container index:
     # find all gangs which operate in city number 3;
     # the result is a set of Gang handles
     city_gangs = Gang.multifind(cities__contains = City.by_id(3))
+
+
+Queries on Sorted Indexes
+-------------------------
+
+For fields which are zindexed, methods that wrap z* redis functions are
+available. These methods return a sorted list of handles:
+
+::
+
+    # get a list of Fighter handles sorted by fighters weight
+    # (notice there's no sorting operation here; we are keeping a sorted index)
+    sorted_by_weight = Fighter.zrange('weight')
+
+    # get the top ten heaviest fighters
+    heaviest_fighters = Fighter.zrevrange('weight', 0, 9)
+
+    # get list of fighters less or equal than 24 years old
+    # (notice you can use zfind for this; see below)
+    young_fighters = Fighter.zrangebyscore('age', '-inf', 24)
+
+    # get first 3 fighters greater than 39 years old (39 not included)
+    mature_fighters = Fighter.zrangebyscore('age', '(39', '+inf', 0, 3)
+
+The convenience zfind method may be used instead of zrangebyscore:
+
+::
+
+    young_fighters = Fighter.zfind(age__lt = 25)
+    mature_fighters = Fighter.zfind(age__gte = 40)
+    in_their_twenties = Fighter.zfind(age__in = (20, 29))
+
+Other available methods:
+
+::
+
+    # count fighters in an age range
+    Fighter.zcount('age', 20, 23)
+
+    # get position of fighter in zero-based weight ranking (increasing order)
+    Fighter.zrank('weight', fighter1)
+
+    # get position of fighter by handle in weight ranking (decreasing order)
+    Fighter.zrevrank('weight', hfighter2)
 
 
 Updating Data

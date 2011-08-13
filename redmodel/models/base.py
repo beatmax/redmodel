@@ -53,7 +53,7 @@ class Handle(object):
             for a in self.model._attributes:
                 v = d[a.name]
                 obj.__dict__[a.name] = a.typecast_for_read(v)
-                if a.indexed:
+                if a.indexed or a.zindexed:
                     obj._indexed_values[a.name] = v
             for l in self.model._lists:
                 obj.__dict__[l.name] = ListHandle(self.key + ':' + l.name,
@@ -173,6 +173,64 @@ class Model(object):
                 k = 'i:{0}:{1}:{2}'.format(cls.__name__, fld, val)
                 return set(map(lambda m: Handle(cls, m), ds.smembers(k)))
 
+    @classmethod
+    def zfind(cls, **kwargs):
+        assert len(kwargs) == 1
+        fldcond = kwargs.keys()[0].split('__')
+        fld = fldcond[0]
+        val = kwargs.values()[0]
+        if len(fldcond) == 1:
+            return cls.zrangebyscore(fld, val, val)
+        else:
+            cond = fldcond[1]
+            if cond == 'lte':
+                return cls.zrangebyscore(fld, '-inf', val)
+            elif cond == 'lt':
+                return cls.zrangebyscore(fld, '-inf', '(' + str(val))
+            elif cond == 'gte':
+                return cls.zrangebyscore(fld, val, '+inf')
+            elif cond == 'gt':
+                return cls.zrangebyscore(fld, '(' + str(val), '+inf')
+            elif cond == 'in':
+                return cls.zrangebyscore(fld, val[0], val[1])
+
+    @classmethod
+    def zrange(cls, fld, start = 0, end = -1):
+        k = 'z:{0}:{1}'.format(cls.__name__, fld)
+        return map(lambda m: Handle(cls, m), ds.zrange(k, start, end))
+
+    @classmethod
+    def zrevrange(cls, fld, start = 0, end = -1):
+        k = 'z:{0}:{1}'.format(cls.__name__, fld)
+        return map(lambda m: Handle(cls, m), ds.zrevrange(k, start, end))
+
+    @classmethod
+    def zrangebyscore(cls, fld, smin, smax, start = None, num = None):
+        k = 'z:{0}:{1}'.format(cls.__name__, fld)
+        return map(lambda m: Handle(cls, m), ds.zrangebyscore(k, smin, smax, start, num))
+
+    @classmethod
+    def zrevrangebyscore(cls, fld, smax, smin, start = None, num = None):
+        k = 'z:{0}:{1}'.format(cls.__name__, fld)
+        return map(lambda m: Handle(cls, m), ds.zrevrangebyscore(k, smax, smin, start, num))
+
+    @classmethod
+    def zcount(cls, fld, smin, smax):
+        k = 'z:{0}:{1}'.format(cls.__name__, fld)
+        return ds.zcount(k, smin, smax)
+
+    @classmethod
+    def zrank(cls, fld, obj):
+        assert isinstance(obj, cls) or ishandle(obj, cls)
+        k = 'z:{0}:{1}'.format(cls.__name__, fld)
+        return ds.zrank(k, obj.oid)
+
+    @classmethod
+    def zrevrank(cls, fld, obj):
+        assert isinstance(obj, cls) or ishandle(obj, cls)
+        k = 'z:{0}:{1}'.format(cls.__name__, fld)
+        return ds.zrevrank(k, obj.oid)
+
     def __new__(cls, *args, **kwargs):
         if len(args) == 0:
             if len(kwargs) == 0:
@@ -184,7 +242,7 @@ class Model(object):
             obj.update_attributes(**kwargs)
             obj._indexed_values = {}
             for a in obj._attributes:
-                if a.indexed:
+                if a.indexed or a.zindexed:
                     obj._indexed_values[a.name] = None
             for l in obj._lists:
                 obj.__dict__[l.name] = None

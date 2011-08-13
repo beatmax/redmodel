@@ -16,11 +16,13 @@ class City(Model):
 #   better to use an IntegerField directly, in order to avoid conversions.
 # - The current city is indexed, so we can find which fighters are in a
 #   city. This index is a collection of redis sets.
+# - Attributes which are zindexed have a redis sorted set associated, so we
+#   can execute queries like Fighter.zfind(age__lt = 30).
 class Fighter(Model):
     name = Attribute(unique = True)
-    age = IntegerField()
-    weight = FloatField()
-    joined = UTCDateTimeField()
+    age = IntegerField(zindexed = True)
+    weight = FloatField(zindexed = True)
+    joined = UTCDateTimeField(zindexed = True)
     city = ReferenceField(City, indexed = True)
 
 # Gang with a name and a set of member fighters.

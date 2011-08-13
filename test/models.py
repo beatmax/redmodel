@@ -127,22 +127,28 @@ class ModelWriteTestCase(ModelTestCase):
 
         # unique indexed field
         fighter_writer = ModelWriter(Fighter)
-        dtime = datetime.utcfromtimestamp(1400000000)
-        f1 = Fighter(name = 'Alice', age = 29, weight = 73.2, joined = dtime, city = City.by_id(1))
-        f2 = Fighter(name = 'Bob', age = 32, weight = 98, joined = dtime, city = City.by_id(1))
+        dtime1 = datetime.utcfromtimestamp(1400000002)
+        dtime2 = datetime.utcfromtimestamp(1400000001)
+        f1 = Fighter(name = 'Alice', age = 29, weight = 73.2, joined = dtime1, city = City.by_id(1))
+        f2 = Fighter(name = 'Bob', age = 23, weight = 98, joined = dtime2, city = City.by_id(1))
         map(fighter_writer.create, [f1, f2])
-        self.assertEqual(ds.hgetall('Fighter:1'), {'name': 'Alice', 'age': '29', 'weight': '73.2', 'joined': '1400000000', 'city': '1'})
-        self.assertEqual(ds.hgetall('Fighter:2'), {'name': 'Bob', 'age': '32', 'weight': '98', 'joined': '1400000000', 'city': '1'})
+        self.assertEqual(ds.hgetall('Fighter:1'), {'name': 'Alice', 'age': '29', 'weight': '73.2', 'joined': '1400000002', 'city': '1'})
+        self.assertEqual(ds.hgetall('Fighter:2'), {'name': 'Bob', 'age': '23', 'weight': '98', 'joined': '1400000001', 'city': '1'})
         self.assertEqual(ds.hgetall('u:Fighter:name'), {'Alice': '1', 'Bob': '2'})
 
         # indexed reference field
         self.assertEqual(ds.smembers('i:Fighter:city:1'), set(['1', '2']))
 
+        # zindexed fields
+        self.assertEqual(ds.zrange('z:Fighter:age', 0, -1), ['2', '1'])
+        self.assertEqual(ds.zrange('z:Fighter:weight', 0, -1), ['1', '2'])
+        self.assertEqual(ds.zrange('z:Fighter:joined', 0, -1), ['2', '1'])
+
         # missing argument
         self.assertRaises(BadArgsError, Fighter, name = 'MissingWeight', age = 30, city = 1)
 
         # unique attribute
-        f3 = Fighter(name = 'Bob', age = 30, weight = 80, joined = dtime, city = 1)
+        f3 = Fighter(name = 'Bob', age = 30, weight = 80, joined = dtime1, city = 1)
         self.assertRaises(UniqueError, fighter_writer.create, f3)
 
         # basic model
@@ -249,6 +255,13 @@ class ModelWriteTestCase(ModelTestCase):
         self.assertEqual(ds.smembers('i:Fighter:city:1'), set(['1']))
         self.assertEqual(ds.smembers('i:Fighter:city:2'), set(['2']))
 
+        # update zindexed attribute
+        self.assertEqual(ds.zrange('z:Fighter:weight', 0, -1), ['2', '1'])
+        fighter_writer.update(fighter1, weight = 99.91)
+        self.assertEqual(ds.zrange('z:Fighter:weight', 0, -1), ['2', '1'])
+        fighter_writer.update(fighter1, weight = 99.89)
+        self.assertEqual(ds.zrange('z:Fighter:weight', 0, -1), ['1', '2'])
+
     def test_delete(self):
         example_data.load()
 
@@ -256,12 +269,14 @@ class ModelWriteTestCase(ModelTestCase):
         fighter_writer = ModelWriter(Fighter)
         self.assertEqual(ds.hgetall('u:Fighter:name'), {'Alice': '1', 'Bob': '2'})
         self.assertEqual(ds.smembers('i:Fighter:city:1'), set(['1', '2']))
+        self.assertEqual(ds.zrange('z:Fighter:weight', 0, -1), ['2', '1'])
         fighter1 = Fighter(Fighter.by_id(1))
         fighter_writer.delete(fighter1)
         self.assertRaises(NotFoundError, Fighter, Fighter.by_id(1))
         self.assertTrue(fighter1.oid is None)
         self.assertEqual(ds.hgetall('u:Fighter:name'), {'Bob': '2'})
         self.assertEqual(ds.smembers('i:Fighter:city:1'), set(['2']))
+        self.assertEqual(ds.zrange('z:Fighter:weight', 0, -1), ['2'])
 
         # delete container item updates indexes
         gang_members_writer = SetFieldWriter(Gang.members)
@@ -391,6 +406,74 @@ class ModelReadTestCase(ModelTestCase):
         self.assertEqual(skills[0].value, 27)
         self.assertEqual(skills[1].skill, Skill.by_id(2))
         self.assertEqual(skills[1].value, 91)
+
+        sorted_by_weight_1 = Fighter.zrange('weight')
+        self.assertEqual(sorted_by_weight_1, [hfighter2, hfighter1])
+
+        sorted_by_weight_2 = Fighter.zrange('weight', 0, 0)
+        self.assertEqual(sorted_by_weight_2, [hfighter2])
+
+        sorted_by_weight_3 = Fighter.zrange('weight', 1, -1)
+        self.assertEqual(sorted_by_weight_3, [hfighter1])
+
+        sorted_by_weight_4 = Fighter.zrevrange('weight')
+        self.assertEqual(sorted_by_weight_4, [hfighter1, hfighter2])
+
+        sorted_by_weight_5 = Fighter.zrevrange('weight', 0, 0)
+        self.assertEqual(sorted_by_weight_5, [hfighter1])
+
+        le24a = Fighter.zfind(age__lte = 24)
+        le24b = Fighter.zrangebyscore('age', '-inf', 24)
+        self.assertEqual(le24a, [hfighter1, hfighter2])
+        self.assertEqual(le24a, le24b)
+
+        le23a = Fighter.zfind(age__lte = 23)
+        le23b = Fighter.zrangebyscore('age', '-inf', 23)
+        self.assertEqual(le23a, [hfighter1, hfighter2])
+        self.assertEqual(le23a, le23b)
+
+        lt23a = Fighter.zfind(age__lt = 23)
+        lt23b = Fighter.zrangebyscore('age', '-inf', '(23')
+        self.assertEqual(lt23a, [hfighter1])
+        self.assertEqual(lt23a, lt23b)
+
+        ge24a = Fighter.zfind(age__gte = 24)
+        ge24b = Fighter.zrangebyscore('age', 24, '+inf')
+        self.assertEqual(ge24a, [])
+        self.assertEqual(ge24a, ge24b)
+
+        ge23a = Fighter.zfind(age__gte = 23)
+        ge23b = Fighter.zrangebyscore('age', 23, '+inf')
+        self.assertEqual(ge23a, [hfighter2])
+        self.assertEqual(ge23a, ge23b)
+
+        gt23a = Fighter.zfind(age__gt = 20)
+        gt23b = Fighter.zrangebyscore('age', '(20', '+inf')
+        self.assertEqual(gt23a, [hfighter2])
+        self.assertEqual(gt23a, gt23b)
+
+        age_in_a = Fighter.zfind(age__in = (20, 23))
+        age_in_b = Fighter.zrangebyscore('age', 20, 23)
+        age_in_c = Fighter.zrangebyscore('age', 20, 23, 0, 2)
+        self.assertEqual(age_in_a, [hfighter1, hfighter2])
+        self.assertEqual(age_in_a, age_in_b)
+        self.assertEqual(age_in_a, age_in_c)
+
+        age_eq_a = Fighter.zfind(age = 20)
+        age_eq_b = Fighter.zrangebyscore('age', 20, 20)
+        self.assertEqual(age_eq_a, [hfighter1])
+        self.assertEqual(age_eq_a, age_eq_b)
+
+        rev_age_in_a = Fighter.zrevrangebyscore('age', 23, 20)
+        rev_age_in_b = Fighter.zrevrangebyscore('age', 23, 20, 0, 2)
+        self.assertEqual(rev_age_in_a, [hfighter2, hfighter1])
+        self.assertEqual(rev_age_in_a, rev_age_in_b)
+
+        self.assertEqual(Fighter.zcount('age', 20, 23), 2)
+        self.assertEqual(Fighter.zrank('weight', fighter1), 1)
+        self.assertEqual(Fighter.zrank('weight', hfighter2), 0)
+        self.assertEqual(Fighter.zrevrank('weight', hfighter1), 0)
+        self.assertEqual(Fighter.zrevrank('weight', hfighter2), 1)
 
 
 def all_tests():
