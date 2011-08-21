@@ -15,9 +15,9 @@
     along with Redmodel.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from redmodel.containers import ListHandle, SetHandle, ContainerWriter, ListWriter, SetWriter
+from redmodel.containers import ListHandle, SetHandle, SortedSetHandle, ContainerWriter, ListWriter, SetWriter, SortedSetWriter
 from redmodel.models.base import Handle, Model
-from redmodel.models.attributes import ListField, SetField
+from redmodel.models.attributes import ListField, SetField, SortedSetField
 from redmodel.models.exceptions import UniqueError, NotFoundError
 from redmodel import connection as ds
 
@@ -69,31 +69,38 @@ class ModelWriter(object):
 
     def __update_attrs(self, obj, data):
         if (len(data)):
-            attr_dict = self.model._attr_dict
-            for fld in data.iterkeys():
-                a = attr_dict[fld]
-                if a.unique:
-                    v = data[fld]
-                    oldv = obj._indexed_values[fld]
-                    if v != oldv:
-                        self.__check_unique(fld, v)
+            self._check_unique_for_update(obj, data)
             pl = ds.pipeline(True)
-            pl.hmset(obj.key, data)
-            for fld in data.iterkeys():
-                a = attr_dict[fld]
-                if a.indexed or a.zindexed:
-                    v = data[fld]
-                    oldv = obj._indexed_values[fld]
-                    if a.indexed:
-                        if oldv is not None:
-                            self.__unindex(pl, obj.oid, fld, oldv, a.unique)
-                        self.__index(pl, obj.oid, fld, v, a.unique)
-                    if a.zindexed:
-                        if oldv is not None:
-                            self.__zunindex(pl, obj.oid, fld)
-                        self.__zindex(pl, obj.oid, fld, v)
-                    obj._indexed_values[fld] = v
+            self._do_update_attrs(pl, obj, data)
             pl.execute()
+
+    def _check_unique_for_update(self, obj, data):
+        attr_dict = self.model._attr_dict
+        for fld in data.iterkeys():
+            a = attr_dict[fld]
+            if a.unique:
+                v = data[fld]
+                oldv = obj._indexed_values[fld]
+                if v != oldv:
+                    self.__check_unique(fld, v)
+
+    def _do_update_attrs(self, pl, obj, data):
+        attr_dict = self.model._attr_dict
+        pl.hmset(obj.key, data)
+        for fld in data.iterkeys():
+            a = attr_dict[fld]
+            if a.indexed or a.zindexed:
+                v = data[fld]
+                oldv = obj._indexed_values[fld]
+                if a.indexed:
+                    if oldv is not None:
+                        self.__unindex(pl, obj.oid, fld, oldv, a.unique)
+                    self.__index(pl, obj.oid, fld, v, a.unique)
+                if a.zindexed:
+                    if oldv is not None:
+                        self.__zunindex(pl, obj.oid, fld)
+                    self.__zindex(pl, obj.oid, fld, v)
+                obj._indexed_values[fld] = v
 
     def create(self, obj, owner = None):
         assert type(obj) is self.model and obj.oid is None
@@ -109,11 +116,16 @@ class ModelWriter(object):
             obj.__dict__[l.name] = ListHandle(key + ':' + l.name, l.target_type)
         for s in obj._sets:
             obj.__dict__[s.name] = SetHandle(key + ':' + s.name, s.target_type)
+        for z in obj._zsets:
+            obj.__dict__[z.name] = SortedSetHandle(key + ':' + z.name, z.target_type)
 
-    def update(self, obj, **kwargs):
+    def _get_update_data(self, obj, **kwargs):
         assert type(obj) is self.model and obj.oid is not None
         assert len(kwargs) > 0
-        data = obj.update_attributes_dict(**kwargs)
+        return obj.update_attributes_dict(**kwargs)
+
+    def update(self, obj, **kwargs):
+        data = self._get_update_data(obj, **kwargs)
         self.__update_attrs(obj, data)
 
     def update_all(self, obj):
@@ -141,13 +153,13 @@ class ContainerFieldWriter(ContainerWriter):
             index_key += field.model.__name__ + ':' + field.name
         ContainerWriter.__init__(self, field.target_type, index_key, field.unique)
 
-    def append(self, hcont, value):
+    def append(self, hcont, value, score = None):
         if self.field.owned:
             assert value.oid is None
             self.element_writer.create(value)
             assert value.oid is not None
             value = value.handle()
-        ContainerWriter.append(self, hcont, value)
+        ContainerWriter.append(self, hcont, value, score)
 
     def remove(self, hcont, value):
         assert (not self.field.owned) or isinstance(value, Model)
@@ -168,3 +180,38 @@ class SetFieldWriter(ContainerFieldWriter, SetWriter):
     def __init__(self, field, element_writer = None):
         assert type(field) is SetField
         ContainerFieldWriter.__init__(self, field, element_writer)
+
+class SortedSetFieldWriter(ContainerFieldWriter, SortedSetWriter):
+    def __init__(self, field, element_writer = None):
+        assert type(field) is SortedSetField
+        ContainerFieldWriter.__init__(self, field, element_writer)
+
+    def append(self, hcont, value, score = None):
+        """ If sort_field is specified, score must be None.
+            If sort_field is not specified, score is mandatory. """
+        assert (score is None) != (self.field.sort_field is None)
+        if score is None:
+            score = getattr(value, self.field.sort_field.name)
+        ContainerFieldWriter.append(self, hcont, value, score)
+
+    def update(self, hcont, obj, **kwargs):
+        assert self.field.owned
+        data = self.element_writer._get_update_data(obj, **kwargs)
+        self.element_writer._check_unique_for_update(obj, data)
+        pl = ds.pipeline(True)
+        SortedSetWriter.raw_remove(self, pl, hcont, obj.oid)
+        self.element_writer._do_update_attrs(pl, obj, data)
+        score = getattr(obj, self.field.sort_field.name)
+        SortedSetWriter.raw_append(self, pl, hcont, obj.oid, score)
+        pl.execute()
+
+    def update_all(self, hcont, obj):
+        assert self.field.owned
+        data = obj.make_dict()
+        self.element_writer._check_unique_for_update(obj, data)
+        pl = ds.pipeline(True)
+        SortedSetWriter.raw_remove(self, pl, hcont, obj.oid)
+        self.element_writer._do_update_attrs(pl, obj, data)
+        score = getattr(obj, self.field.sort_field.name)
+        SortedSetWriter.raw_append(self, pl, hcont, obj.oid, score)
+        pl.execute()

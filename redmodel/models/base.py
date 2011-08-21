@@ -16,8 +16,8 @@
 """
 
 from redmodel import connection as ds
-from redmodel.containers import ListHandle, SetHandle
-from redmodel.models.attributes import Attribute, ReferenceField, ListField, SetField, Recursive
+from redmodel.containers import ListHandle, SetHandle, SortedSetHandle
+from redmodel.models.attributes import Attribute, ReferenceField, ListField, SetField, SortedSetField, Recursive
 from redmodel.models.exceptions import NotFoundError, BadArgsError
 
 class Handle(object):
@@ -61,6 +61,9 @@ class Handle(object):
             for s in self.model._sets:
                 obj.__dict__[s.name] = SetHandle(self.key + ':' + s.name,
                                                  s.target_type)
+            for z in self.model._zsets:
+                obj.__dict__[z.name] = SortedSetHandle(self.key + ':' + z.name,
+                                                       z.target_type)
             return obj
         except KeyError:
             if len(d) == 0 and not self.model.exists(self.oid):
@@ -77,11 +80,13 @@ class ModelMeta(type):
         attributes = []
         lists = []
         sets = []
+        zsets = []
         attrs['_owner'] = None
         attrs['_attr_dict'] = attr_dict
         attrs['_attributes'] = attributes
         attrs['_lists'] = lists
         attrs['_sets'] = sets
+        attrs['_zsets'] = zsets
         new_type = type.__new__(cls, name, bases, attrs)
         for k, v in attrs.iteritems():
             if k == 'owner':
@@ -89,6 +94,9 @@ class ModelMeta(type):
                 new_type._owner = v
             elif isinstance(v, Attribute):
                 v.name = k
+                if v.zindexed:
+                    zkey = 'z:{0}:{1}'.format(name, k)
+                    v.zindex = SortedSetHandle(zkey, new_type)
                 attr_dict[k] = v
                 attributes.append(v)
             elif isinstance(v, ListField):
@@ -103,6 +111,12 @@ class ModelMeta(type):
                 if v.target_type == Recursive:
                     v.target_type = new_type
                 sets.append(v)
+            elif isinstance(v, SortedSetField):
+                v.name = k
+                v.model = new_type
+                if v.target_type == Recursive:
+                    v.target_type = new_type
+                zsets.append(v)
         return new_type
 
 class Model(object):
@@ -175,6 +189,9 @@ class Model(object):
 
     @classmethod
     def zfind(cls, **kwargs):
+        """ Calls typecast_for_write, so it can be used with datetime values,
+            or other special field types. For other z* methods,
+            typecast_for_write must be called explicitly if needed. """
         assert len(kwargs) == 1
         fldcond = kwargs.keys()[0].split('__')
         fld = fldcond[0]
@@ -186,56 +203,38 @@ class Model(object):
         else:
             val = f.typecast_for_write(val)
         if len(fldcond) == 1:
-            return cls.zrangebyscore(fld, val, val)
+            return f.zindex.zfind(eq = val)
         else:
             cond = fldcond[1]
-            if cond == 'lte':
-                return cls.zrangebyscore(fld, '-inf', val)
-            elif cond == 'lt':
-                return cls.zrangebyscore(fld, '-inf', '(' + str(val))
-            elif cond == 'gte':
-                return cls.zrangebyscore(fld, val, '+inf')
-            elif cond == 'gt':
-                return cls.zrangebyscore(fld, '(' + str(val), '+inf')
-            elif cond == 'in':
-                return cls.zrangebyscore(fld, val[0], val[1])
+            return f.zindex.zfind(**{cond: val})
 
     @classmethod
     def zrange(cls, fld, start = 0, end = -1):
-        k = 'z:{0}:{1}'.format(cls.__name__, fld)
-        return map(lambda m: Handle(cls, m), ds.zrange(k, start, end))
+        return cls._zindex(fld).zrange(start, end)
 
     @classmethod
     def zrevrange(cls, fld, start = 0, end = -1):
-        k = 'z:{0}:{1}'.format(cls.__name__, fld)
-        return map(lambda m: Handle(cls, m), ds.zrevrange(k, start, end))
+        return cls._zindex(fld).zrevrange(start, end)
 
     @classmethod
     def zrangebyscore(cls, fld, smin, smax, start = None, num = None):
-        k = 'z:{0}:{1}'.format(cls.__name__, fld)
-        return map(lambda m: Handle(cls, m), ds.zrangebyscore(k, smin, smax, start, num))
+        return cls._zindex(fld).zrangebyscore(smin, smax, start, num)
 
     @classmethod
     def zrevrangebyscore(cls, fld, smax, smin, start = None, num = None):
-        k = 'z:{0}:{1}'.format(cls.__name__, fld)
-        return map(lambda m: Handle(cls, m), ds.zrevrangebyscore(k, smax, smin, start, num))
+        return cls._zindex(fld).zrevrangebyscore(smax, smin, start, num)
 
     @classmethod
     def zcount(cls, fld, smin, smax):
-        k = 'z:{0}:{1}'.format(cls.__name__, fld)
-        return ds.zcount(k, smin, smax)
+        return cls._zindex(fld).zcount(smin, smax)
 
     @classmethod
     def zrank(cls, fld, obj):
-        assert isinstance(obj, cls) or ishandle(obj, cls)
-        k = 'z:{0}:{1}'.format(cls.__name__, fld)
-        return ds.zrank(k, obj.oid)
+        return cls._zindex(fld).zrank(obj)
 
     @classmethod
     def zrevrank(cls, fld, obj):
-        assert isinstance(obj, cls) or ishandle(obj, cls)
-        k = 'z:{0}:{1}'.format(cls.__name__, fld)
-        return ds.zrevrank(k, obj.oid)
+        return cls._zindex(fld).zrevrank(obj)
 
     def __new__(cls, *args, **kwargs):
         if len(args) == 0:
@@ -305,3 +304,7 @@ class Model(object):
             if self.__dict__.has_key(a.name):
                 d[a.name] = a.typecast_for_write(self.__dict__[a.name])
         return d
+
+    @classmethod
+    def _zindex(cls, fld):
+        return cls.__dict__[fld].zindex

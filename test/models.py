@@ -19,9 +19,9 @@ import unittest
 import sys
 from datetime import datetime
 from test import example_data
-from test.example_models import City, Fighter, Gang, Skill, SkillInstance, FighterSkillList
-from redmodel.models import SetField, ModelWriter, ListFieldWriter, SetFieldWriter, NotFoundError, UniqueError, BadArgsError
-from redmodel.containers import List, Set, ListHandle, SetHandle, ListWriter, SetWriter
+from test.example_models import City, Weapon, Fighter, Gang, Skill, SkillInstance, FighterSkillList
+from redmodel.models import SetField, ModelWriter, ListFieldWriter, SetFieldWriter, SortedSetFieldWriter, NotFoundError, UniqueError, BadArgsError
+from redmodel.containers import List, Set, SortedSet, ListHandle, SetHandle, SortedSetHandle, ListWriter, SetWriter, SortedSetWriter
 from redmodel import connection as ds
 
 
@@ -62,6 +62,27 @@ class ContainersTestCase(ModelTestCase):
             writer.append(hlist, f)
         mylist = List(hlist)
         self.assertEqual(mylist, (f1, f2, f3))
+
+    def test_sorted_set(self):
+        writer = SortedSetWriter(str)
+        hzset = SortedSetHandle('myzset', str)
+        writer.append(hzset, 'spam', 3.25)
+        writer.append(hzset, 'eggs', 3.24)
+        self.assertEqual(SortedSet(hzset), ('eggs', 'spam'))
+        self.assertEqual(SortedSet(hzset, lte = 3.24), ('eggs',))
+        self.assertEqual(SortedSet.zrange(hzset, 0, 0), ('eggs',))
+        self.assertEqual(SortedSet.zfind(hzset, gt = 3.24), ('spam',))
+
+    def test_model_sorted_set(self):
+        writer = SortedSetWriter(Fighter)
+        hzset = SortedSetHandle('myzset', Fighter)
+        f1, f2, f3 = map(Fighter.by_id, [21, 33, 47])
+        writer.append(hzset, f1, 3.25)
+        writer.append(hzset, f2, 3.24)
+        writer.append(hzset, f3, 4)
+        self.assertEqual(SortedSet.zrange(hzset), (f2, f1, f3))
+        self.assertEqual(SortedSet.zrevrange(hzset, 0, 0), (f3,))
+        self.assertEqual(SortedSet(hzset, gt = 3.24), (f1, f3))
 
     def test_indexed_set(self):
         writer = SetWriter(int, index_key = 'myindex')
@@ -217,6 +238,20 @@ class ModelWriteTestCase(ModelTestCase):
         self.assertEqual(ds.hgetall('SkillInstance:3'), {'skill': '1', 'value': '27'})
         self.assertEqual(ds.hgetall('SkillInstance:4'), {'skill': '2', 'value': '91'})
 
+        # owned model sorted set field
+        weapon_writer = ModelWriter(Weapon)
+        fighter_weapons_writer = SortedSetFieldWriter(Fighter.weapons, weapon_writer)
+        w1 = Weapon(description = 'second', power = 50.5)
+        w2 = Weapon(description = 'third', power = 34.2)
+        w3 = Weapon(description = 'first', power = 50.7)
+        fighter_weapons_writer.append(f1.weapons, w1)
+        fighter_weapons_writer.append(f1.weapons, w2)
+        fighter_weapons_writer.append(f1.weapons, w3)
+        self.assertEqual(ds.zrange('Fighter:1:weapons', 0, -1), ['2', '1', '3'])
+        self.assertEqual(ds.hgetall('Weapon:1'), {'description': 'second', 'power': '50.5'})
+        self.assertEqual(ds.hgetall('Weapon:2'), {'description': 'third', 'power': '34.2'})
+        self.assertEqual(ds.hgetall('Weapon:3'), {'description': 'first', 'power': '50.7'})
+
     def test_update(self):
         example_data.load()
         fighter_writer = ModelWriter(Fighter)
@@ -261,6 +296,24 @@ class ModelWriteTestCase(ModelTestCase):
         self.assertEqual(ds.zrange('z:Fighter:weight', 0, -1), ['2', '1'])
         fighter_writer.update(fighter1, weight = 99.89)
         self.assertEqual(ds.zrange('z:Fighter:weight', 0, -1), ['1', '2'])
+
+        # update object and sorted set atomically
+        self.assertEqual(ds.zrange('Fighter:1:weapons', 0, -1), ['2', '1', '3'])
+        self.assertEqual(ds.hgetall('Weapon:2'), {'description': 'third', 'power': '34.2'})
+        weapon_writer = ModelWriter(Weapon)
+        fighter_weapons_writer = SortedSetFieldWriter(Fighter.weapons, weapon_writer)
+        w2 = Weapon(Weapon.by_id(2))
+        fighter_weapons_writer.update(fighter1.weapons, w2,
+                                      power = 70, description = 'improved')
+        self.assertEqual(ds.zrange('Fighter:1:weapons', 0, -1), ['1', '3', '2'])
+        self.assertEqual(ds.hgetall('Weapon:2'), {'description': 'improved', 'power': '70'})
+        self.assertEqual(w2.power, 70)
+        self.assertEqual(w2.description, 'improved')
+        w2.power -= 60
+        w2.description = 'degraded'
+        fighter_weapons_writer.update_all(fighter1.weapons, w2)
+        self.assertEqual(ds.zrange('Fighter:1:weapons', 0, -1), ['2', '1', '3'])
+        self.assertEqual(ds.hgetall('Weapon:2'), {'description': 'degraded', 'power': '10'})
 
     def test_delete(self):
         example_data.load()
@@ -481,6 +534,21 @@ class ModelReadTestCase(ModelTestCase):
         self.assertEqual(Fighter.zrank('weight', hfighter2), 0)
         self.assertEqual(Fighter.zrevrank('weight', hfighter1), 0)
         self.assertEqual(Fighter.zrevrank('weight', hfighter2), 1)
+
+        hweapon1 = Weapon.by_id(1)
+        hweapon2 = Weapon.by_id(2)
+        hweapon3 = Weapon.by_id(3)
+
+        sorted_weapons = SortedSet.zrange(fighter1.weapons)
+        self.assertEqual(sorted_weapons, (hweapon2, hweapon1, hweapon3))
+
+        top_weapons = SortedSet.zrevrange(fighter1.weapons, 0, 1)
+        self.assertEqual(top_weapons, (hweapon3, hweapon1))
+
+        powerful_weapons1 = SortedSet.zfind(fighter1.weapons, gt = 50)
+        powerful_weapons2 = SortedSet(fighter1.weapons, gt = 50)
+        self.assertEqual(powerful_weapons1, (hweapon1, hweapon3))
+        self.assertEqual(powerful_weapons1, powerful_weapons2)
 
 
 def all_tests():

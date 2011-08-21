@@ -86,5 +86,12 @@ class SetField(ContainerField):
     def __init__(self, target_type, indexed = False, unique = False, owned = False):
         ContainerField.__init__(self, target_type, indexed, unique, owned)
 
+class SortedSetField(ContainerField):
+    def __init__(self, target_type, sort_field = None, indexed = False, unique = False, owned = False):
+        """ If sort_field is specified, then owned = True is mandatory. """
+        assert owned or sort_field is None
+        ContainerField.__init__(self, target_type, indexed, unique, owned)
+        self.sort_field = sort_field
+
 class Recursive:
     pass

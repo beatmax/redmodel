@@ -106,7 +106,8 @@ the fighters.
 
 ::
 
-    from redmodel.models import Model, Attribute, BooleanField, IntegerField, FloatField, UTCDateTimeField, ReferenceField, ListField, SetField, Recursive
+    from redmodel.models import Model, Attribute, BooleanField, IntegerField, FloatField, UTCDateTimeField
+    from redmodel.models import ReferenceField, ListField, SetField, SortedSetField, Recursive
 
     # City with a name, a boolean, and a list of connections to other cities
     # (recursive references).
@@ -114,6 +115,11 @@ the fighters.
         name = Attribute()
         coast = BooleanField()
         connections = ListField(Recursive)
+
+    # Weapon with a description and its power value.
+    class Weapon(Model):
+        description = Attribute()
+        power = FloatField()
 
     # Fighter with name, age, weight, join time, and current city.
     # - The name is defined as unique, so fighters are indexed by name (we can
@@ -125,12 +131,23 @@ the fighters.
     #   city. This index is a collection of redis sets.
     # - Attributes which are zindexed have a redis sorted set associated, so we
     #   can execute queries like Fighter.zfind(age__lt = 30).
+    # - Weapons are sorted by power. In this case, we have a redis sorted set
+    #   for every Fighter object (with zindexed, we have one global sorted set).
+    # - The weapons field could have been created as:
+    #     weapons = SortedSetField(Weapon)
+    #   So entries are not sorted by a specific field, but a 'score' must be
+    #   specified as an additional parameter.
+    #   If a field is specified, then owned must be True (see below for an
+    #   explanation about 'owned'), and a weapon's power should not be updated
+    #   directly, but using SortedSetFieldWriter's update or update_all methods,
+    #   so the sorted set is automatically and atomically updated.
     class Fighter(Model):
         name = Attribute(unique = True)
         age = IntegerField(zindexed = True)
         weight = FloatField(zindexed = True)
         joined = UTCDateTimeField(zindexed = True)
         city = ReferenceField(City, indexed = True)
+        weapons = SortedSetField(Weapon, Weapon.power, owned = True)
 
     # Gang with a name and a set of member fighters.
     # A fighter can only be the leader of one gang. This index is a redis hash.
@@ -221,6 +238,22 @@ Create a gang and add both fighters to it:
     gang_members_writer.append(g.members, f1)
     gang_members_writer.append(g.members, f2)
 
+Add some weapons to fighter f1. Notice that we attach weapon_writer to
+fighter_weapons_writer as the "element_writer", so objects are created and
+deleted automatically (we can do this because the "weapons" container of
+Fighter has "owned = True"). Furthermore, this will be useful when updating
+the objects to keep the set sorted (see later):
+
+::
+
+    weapon_writer = ModelWriter(Weapon)
+    fighter_weapons_writer = SortedSetFieldWriter(Fighter.weapons, weapon_writer)
+    w1 = Weapon(description = 'second', power = 50.5)
+    w2 = Weapon(description = 'third', power = 34.2)
+    w3 = Weapon(description = 'first', power = 50.7)
+    for w in w1, w2, w3:
+        fighter_weapons_writer.append(f1.weapons, w)
+
 Create some skill definitions:
 
 ::
@@ -241,9 +274,7 @@ Attach FighterSkillList objects to existing Fighter objects:
     fighter_skill_list_writer.create(f2skills, f2)
 
 Add skill instances to fighter skill lists. Notice that we attach
-skill_instance_writer to fighter_skills_writer as the "element_writer", so
-objects are created and deleted automatically (we can do this because the
-"skills" container of FighterSkillList has "owned = True").
+skill_instance_writer to fighter_skills_writer as the "element_writer":
 
 ::
 
@@ -278,11 +309,12 @@ constructor:
 
     gang = Gang(handle)
 
-Container fields (lists and sets) are not read automatically from redis.
-Instead, a handle for the container is generated in the owner object.
-They are loaded using the List and Set classes from redmodel.containers.
-A List or Set class contains a collection of object handles (but notice that
-containers of elementary types can also exist).
+Container fields (lists, sets and sorted sets) are not read automatically from
+redis. Instead, a handle for the container is generated in the owner object.
+They are loaded using the List, Set and SortedSet classes from
+redmodel.containers.  A List, Set or SortedSet object contains a collection
+of object handles (but notice that containers of elementary types can also
+exist).
 
 This is how we list the gang member fighters:
 
@@ -292,6 +324,23 @@ This is how we list the gang member fighters:
     members = Set(gang.members)
     for handle in members:
         print(str(Fighter(handle)))
+
+SortedSet has some query methods in addition to the read constructor.
+These methods wrap z* redis functions (plus the convenience zfind method).
+These are further explained in the Containers section. So, we can make some
+queries on a fighter weapon set:
+
+::
+
+    fighter1 = Fighter(Fighter.by_id(1))
+    # normal read constructor: returns sorted weapon handle list
+    sorted_weapons = SortedSet(fighter1.weapons)
+    # read constructor with filter (returns weapons with power greater than 50)
+    powerful_weapons = SortedSet(fighter1.weapons, gt = 50)
+    # alternative method to get the same
+    powerful_weapons = SortedSet.zfind(fighter1.weapons, gt = 50)
+    # top 10 fighter1's most powerful weapons
+    top_weapons = SortedSet.zrevrange(fighter1.weapons, 0, 9)
 
 For owned models, use by_owner() to create handles and read data:
 
@@ -350,7 +399,8 @@ Queries on Sorted Indexes
 -------------------------
 
 For fields which are zindexed, methods that wrap z* redis functions are
-available. These methods return a sorted list of handles:
+available (similar to those on sorted set fields explained before).
+These methods return a sorted list of handles:
 
 ::
 
@@ -410,6 +460,17 @@ Object attributes can be updated in two ways:
     fighter.age = 41
     fighter_writer.update_all(fighter)
 
+Update a sorted set field owned element while resorting the set atomically:
+
+::
+
+    w2 = Weapon(Weapon.by_id(2))
+    fighter_weapons_writer.update(fighter1.weapons, w2,
+                                  power = 70, description = 'improved')
+    w2.power -= 60
+    w2.description = 'degraded'
+    fighter_weapons_writer.update_all(fighter1.weapons, w2)
+
 Delete an object. Notice that containers referencing this object will contain
 now an invalid handle! Use container fields with "owned = True" whenever
 possible, so objects are deleted automatically when removing its handle from
@@ -436,13 +497,16 @@ also be used, which can hold model objects and even be indexed. Some examples:
 
 ::
 
-    from redmodel.containers import List, Set, ListHandle, SetHandle, ListWriter, SetWriter
+    from redmodel.containers import List, Set, SortedSet
+    from redmodel.containers import ListHandle, SetHandle, SortedSetHandle
+    from redmodel.containers import ListWriter, SetWriter, SortedSetWriter
 
     # a list of strings
     writer = ListWriter(str)
     hlist = ListHandle('mylist', str)
     writer.append(hlist, 'spam')
     writer.append(hlist, 'eggs')
+    read_list = List(hlist)
 
     # a set of integers
     writer = SetWriter(int)
@@ -450,6 +514,26 @@ also be used, which can hold model objects and even be indexed. Some examples:
     writer.append(hset, 11)
     writer.append(hset, 13)
     writer.append(hset, 17)
+    read_set = Set(hset)
+
+    # a sorted set of strings (sorted by a float score)
+    writer = SortedSetWriter(str)
+    hzset = SortedSetHandle('myzset', str)
+    writer.append(hzset, 'spam', 3.25)
+    writer.append(hzset, 'eggs', 3.24)
+    read_zset = SortedSet(hzset)
+    read_zset = SortedSet(hzset, gt = 3.24)  # returns ('spam',)
+
+    # SortedSet has z* query methods which map redis z* functions,
+    # plus convenience zfind method (as an alternative to zrangebyscore)
+    sorted_elements = SortedSet.zrange(hzset)
+    top_ten = SortedSet.zrevrange(hzset, 0, 9)
+    first_greater = SortedSet.zrangebyscore(hzset, '(3.24', '+inf', 0, 1)
+    all_greater = SortedSet.zfind(hzset, gt = 3.24)
+    score_match = SortedSet.zfind(hzset, eq = 3.24)
+    range_count = SortedSet.zcount(hzset, 3.24, 3.25)
+    element_position = SortedSet.zrank(hzset, 'spam')
+    rev_element_position = SortedSet.zrevrank(hzset, 'eggs')
 
     # a list of objects
     writer = ListWriter(Fighter)

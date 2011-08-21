@@ -1,0 +1,14 @@
+2011-08-21  redmodel 0.3
+
+    * added SortedSet and SortedSetField
+
+2011-08-13  redmodel 0.2
+
+    * sorted indexes (zindexed fields)
+    * boolean, float and datetime field types
+    * many small improvements
+
+2011-03-01  redmodel 0.1
+
+    * initial version
+

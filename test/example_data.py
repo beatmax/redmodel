@@ -1,5 +1,5 @@
-from test.example_models import City, Fighter, Gang, Skill, SkillInstance, FighterSkillList
-from redmodel.models import ModelWriter, ListFieldWriter, SetFieldWriter
+from test.example_models import City, Weapon, Fighter, Gang, Skill, SkillInstance, FighterSkillList
+from redmodel.models import ModelWriter, ListFieldWriter, SetFieldWriter, SortedSetFieldWriter
 from redmodel import connection as ds
 from datetime import datetime
 
@@ -76,6 +76,17 @@ def load():
     add_gang_city(g, c1)
     add_gang_city(g, c3)
 
+    # add weapons to fighter; weapons are owned (owned = True on the
+    # SortedSetField), so we attach weapon writer to fighter weapons writer
+    weapon_writer = ModelWriter(Weapon)
+    fighter_weapons_writer = SortedSetFieldWriter(Fighter.weapons, weapon_writer)
+    w1 = Weapon(description = 'second', power = 50.5)
+    w2 = Weapon(description = 'third', power = 34.2)
+    w3 = Weapon(description = 'first', power = 50.7)
+    for w in w1, w2, w3:
+        fighter_weapons_writer.append(f1.weapons, w)
+
+    # skills
     skill_writer = ModelWriter(Skill)
     sk1 = Skill(category = 1, name = 'Strength', description = 'Strength...')
     sk2 = Skill(category = 3, name = 'Karate', description = 'Karate...')

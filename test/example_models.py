@@ -1,5 +1,5 @@
-from redmodel.models import Model, Attribute, BooleanField, IntegerField, FloatField, UTCDateTimeField, ReferenceField, ListField, SetField, Recursive
-from redmodel.containers import List, Set
+from redmodel.models import Model, Attribute, BooleanField, IntegerField, FloatField, UTCDateTimeField
+from redmodel.models import ReferenceField, ListField, SetField, SortedSetField, Recursive
 
 # City with a name, a boolean, and a list of connections to other cities
 # (recursive references).
@@ -7,6 +7,11 @@ class City(Model):
     name = Attribute()
     coast = BooleanField()
     connections = ListField(Recursive)
+
+# Weapon with a description and its power value.
+class Weapon(Model):
+    description = Attribute()
+    power = FloatField()
 
 # Fighter with name, age, weight, join time, and current city.
 # - The name is defined as unique, so fighters are indexed by name (we can
@@ -18,12 +23,23 @@ class City(Model):
 #   city. This index is a collection of redis sets.
 # - Attributes which are zindexed have a redis sorted set associated, so we
 #   can execute queries like Fighter.zfind(age__lt = 30).
+# - Weapons are sorted by power. In this case, we have a redis sorted set
+#   for every Fighter object (with zindexed, we have one global sorted set).
+# - The weapons field could have been created as:
+#     weapons = SortedSetField(Weapon)
+#   So entries are not sorted by a specific field, but a 'score' must be
+#   specified as an additional parameter.
+#   If a field is specified, then owned must be True (see below for an
+#   explanation about 'owned'), and a weapon's power should not be updated
+#   directly, but using SortedSetFieldWriter's update or update_all methods,
+#   so the sorted set is automatically and atomically updated.
 class Fighter(Model):
     name = Attribute(unique = True)
     age = IntegerField(zindexed = True)
     weight = FloatField(zindexed = True)
     joined = UTCDateTimeField(zindexed = True)
     city = ReferenceField(City, indexed = True)
+    weapons = SortedSetField(Weapon, Weapon.power, owned = True)
 
 # Gang with a name and a set of member fighters.
 # A fighter can only be the leader of one gang. This index is a redis hash.
@@ -63,6 +79,7 @@ class FighterSkillList(Model):
     skills = ListField(SkillInstance, owned = True)
 
 if __name__ == '__main__':
+    from redmodel.containers import List, Set
     gang = Gang(Gang.by_id(1))
     print(gang)
     members = Set(gang.members)
