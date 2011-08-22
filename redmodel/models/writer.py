@@ -56,9 +56,17 @@ class ModelWriter(object):
         k = 'z:{0}:{1}'.format(self.modname, fld)
         pl.zrem(k, oid)
 
+    def __list(self, pl, oid, fld, val):
+        k = 'l:{0}:{1}:{2}'.format(self.modname, fld, val)
+        pl.rpush(k, oid)
+
+    def __unlist(self, pl, oid, fld, val):
+        k = 'l:{0}:{1}:{2}'.format(self.modname, fld, val)
+        pl.lrem(k, oid)
+
     def __unindex_all(self, pl, obj):
         for a in obj._attributes:
-            if a.indexed or a.zindexed:
+            if a.indexed or a.zindexed or a.listed:
                 fld = a.name
                 v = obj._indexed_values[fld]
                 if v is not None:
@@ -66,6 +74,8 @@ class ModelWriter(object):
                         self.__unindex(pl, obj.oid, fld, v, a.unique)
                     if a.zindexed:
                         self.__zunindex(pl, obj.oid, fld)
+                    if a.listed:
+                        self.__unlist(pl, obj.oid, fld, v)
 
     def __update_attrs(self, obj, data):
         if (len(data)):
@@ -89,7 +99,7 @@ class ModelWriter(object):
         pl.hmset(obj.key, data)
         for fld in data.iterkeys():
             a = attr_dict[fld]
-            if a.indexed or a.zindexed:
+            if a.indexed or a.zindexed or a.listed:
                 v = data[fld]
                 oldv = obj._indexed_values[fld]
                 if a.indexed:
@@ -100,6 +110,10 @@ class ModelWriter(object):
                     if oldv is not None:
                         self.__zunindex(pl, obj.oid, fld)
                     self.__zindex(pl, obj.oid, fld, v)
+                if a.listed:
+                    if oldv is not None:
+                        self.__unlist(pl, obj.oid, fld, oldv)
+                    self.__list(pl, obj.oid, fld, v)
                 obj._indexed_values[fld] = v
 
     def create(self, obj, owner = None):

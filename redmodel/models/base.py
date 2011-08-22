@@ -53,7 +53,7 @@ class Handle(object):
             for a in self.model._attributes:
                 v = d[a.name]
                 obj.__dict__[a.name] = a.typecast_for_read(v)
-                if a.indexed or a.zindexed:
+                if a.indexed or a.zindexed or a.listed:
                     obj._indexed_values[a.name] = v
             for l in self.model._lists:
                 obj.__dict__[l.name] = ListHandle(self.key + ':' + l.name,
@@ -209,6 +209,21 @@ class Model(object):
             return f.zindex.zfind(**{cond: val})
 
     @classmethod
+    def getlist(cls, start_ = 0, end_ = -1, **kwargs):
+        assert len(kwargs) == 1
+        fld, val = kwargs.popitem()
+        f = cls.__dict__[fld]
+        if isinstance(val, Handle):
+            assert not hasattr(f, 'target_type') or val.model is f.target_type
+            val = val.oid
+        else:
+            assert not hasattr(f, 'target_type') or type(val) is f.target_type
+            if isinstance(val, Model):
+                val = val.oid
+        k = 'l:{0}:{1}:{2}'.format(cls.__name__, fld, val)
+        return map(lambda m: Handle(cls, m), ds.lrange(k, start_, end_))
+
+    @classmethod
     def zrange(cls, fld, start = 0, end = -1):
         return cls._zindex(fld).zrange(start, end)
 
@@ -247,7 +262,7 @@ class Model(object):
             obj.update_attributes(**kwargs)
             obj._indexed_values = {}
             for a in obj._attributes:
-                if a.indexed or a.zindexed:
+                if a.indexed or a.zindexed or a.listed:
                     obj._indexed_values[a.name] = None
             for l in obj._lists:
                 obj.__dict__[l.name] = None

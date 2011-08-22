@@ -19,10 +19,11 @@ from datetime import datetime
 import calendar
 
 class Attribute(object):
-    def __init__(self, indexed = False, unique = False, zindexed = False):
+    def __init__(self, indexed = False, unique = False, zindexed = False, listed = False):
         self.indexed = indexed or unique
         self.unique = unique
         self.zindexed = zindexed
+        self.listed = listed
 
     def typecast_for_read(self, value):
         return value
@@ -61,9 +62,9 @@ class UTCDateTimeField(Attribute):
         return calendar.timegm(value.utctimetuple())
 
 class ReferenceField(Attribute):
-    def __init__(self, target_type, indexed = False, unique = False):
+    def __init__(self, target_type, indexed = False, unique = False, listed = False):
         self.target_type = target_type
-        Attribute.__init__(self, indexed, unique)
+        Attribute.__init__(self, indexed, unique, False, listed)
 
     def typecast_for_read(self, value):
         return self.target_type.by_id(value)

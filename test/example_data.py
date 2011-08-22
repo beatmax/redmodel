@@ -43,7 +43,7 @@ gang_members_writer = SetFieldWriter(Gang.members)
 gang_cities_writer = SetFieldWriter(Gang.cities)
 
 def create_gang(name_, leader_):
-    gang = Gang(name = name_, leader = leader_)
+    gang = Gang(name = name_, leader = leader_, hqcity = City.by_id(3))
     gang_writer.create(gang)
     return gang
 
@@ -70,11 +70,12 @@ def load():
     f1 = create_fighter('Alice', 20, 107.44, 1400000002)
     f2 = create_fighter('Bob', 23, 102.923, 1400000001)
 
-    g = create_gang('Ghetto Warriors', f1)
-    add_member(g, f1)
-    add_member(g, f2)
-    add_gang_city(g, c1)
-    add_gang_city(g, c3)
+    g1 = create_gang('Ghetto Warriors', f1)
+    add_member(g1, f1)
+    add_member(g1, f2)
+    add_gang_city(g1, c1)
+    add_gang_city(g1, c3)
+    g2 = create_gang('Midnight Club', Fighter.by_id(0))
 
     # add weapons to fighter; weapons are owned (owned = True on the
     # SortedSetField), so we attach weapon writer to fighter weapons writer

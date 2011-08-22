@@ -47,11 +47,16 @@ class Fighter(Model):
 # only. This index is a single redis hash.
 # Cities where the gang operates are indexed, so we can find which gangs
 # operate in a city. This index is a collection of redis sets.
+# The headquarter city (hqcity) is listed: This means that redis lists exist
+# containing gangs with their headquarters in each city. This is similar to
+# indexed, but a list is used instead of a set. This is great to keep the
+# elements sorted by creation time, but it's bad for removing or searching.
 class Gang(Model):
     name = Attribute()
     leader = ReferenceField(Fighter, unique = True)
     members = SetField(Fighter, unique = True)
     cities = SetField(City, indexed = True)
+    hqcity = ReferenceField(City, listed = True)
 
 # Skill that fighters can have.
 class Skill(Model):

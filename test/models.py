@@ -174,8 +174,8 @@ class ModelWriteTestCase(ModelTestCase):
 
         # basic model
         gang_writer = ModelWriter(Gang)
-        g1 = Gang(name = 'Ghetto Warriors', leader = f1)
-        g2 = Gang(name = 'Midnight Club', leader = f2)
+        g1 = Gang(name = 'Ghetto Warriors', leader = f1, hqcity = c3)
+        g2 = Gang(name = 'Midnight Club', leader = f2, hqcity = c1)
         map(gang_writer.create, [g1, g2])
 
         # unique indexed reference field
@@ -198,6 +198,10 @@ class ModelWriteTestCase(ModelTestCase):
         self.assertEqual(ds.smembers('Gang:1:cities'), set(['1', '3']))
         self.assertEqual(ds.smembers('i:Gang:cities:1'), set(['1']))
         self.assertEqual(ds.smembers('i:Gang:cities:3'), set(['1']))
+
+        # listed reference field
+        self.assertEqual(ds.lrange('l:Gang:hqcity:1', 0, -1), ['2'])
+        self.assertEqual(ds.lrange('l:Gang:hqcity:3', 0, -1), ['1'])
 
         # basic model
         skill_writer = ModelWriter(Skill)
@@ -297,6 +301,15 @@ class ModelWriteTestCase(ModelTestCase):
         fighter_writer.update(fighter1, weight = 99.89)
         self.assertEqual(ds.zrange('z:Fighter:weight', 0, -1), ['1', '2'])
 
+        # update listed attribute
+        self.assertEqual(ds.lrange('l:Gang:hqcity:1', 0, -1), [])
+        self.assertEqual(ds.lrange('l:Gang:hqcity:3', 0, -1), ['1', '2'])
+        gang2 = Gang(Gang.by_id(2))
+        gang_writer = ModelWriter(Gang)
+        gang_writer.update(gang2, hqcity = city1)
+        self.assertEqual(ds.lrange('l:Gang:hqcity:1', 0, -1), ['2'])
+        self.assertEqual(ds.lrange('l:Gang:hqcity:3', 0, -1), ['1'])
+
         # update object and sorted set atomically
         self.assertEqual(ds.zrange('Fighter:1:weapons', 0, -1), ['2', '1', '3'])
         self.assertEqual(ds.hgetall('Weapon:2'), {'description': 'third', 'power': '34.2'})
@@ -349,6 +362,12 @@ class ModelWriteTestCase(ModelTestCase):
         self.assertEqual(ds.smembers('Gang:1:cities'), set(['3']))
         self.assertFalse(ds.exists('i:Gang:cities:1'))
         self.assertEqual(ds.smembers('i:Gang:cities:3'), set(['1']))
+
+        # delete object updates lists of listed attributes
+        self.assertEqual(ds.lrange('l:Gang:hqcity:3', 0, -1), ['1', '2'])
+        gang_writer = ModelWriter(Gang)
+        gang_writer.delete(gang1)
+        self.assertEqual(ds.lrange('l:Gang:hqcity:3', 0, -1), ['2'])
 
         # autodelete owned item
         fighter_skill_list_writer = ModelWriter(FighterSkillList)
