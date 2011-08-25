@@ -150,16 +150,23 @@ the fighters.
         weapons = SortedSetField(Weapon, Weapon.power, owned = True)
 
     # Gang with a name and a set of member fighters.
-    # A fighter can only be the leader of one gang. This index is a redis hash.
-    # Members are indexed uniquely. That means a fighter can be in one gang
-    # only. This index is a single redis hash.
-    # Cities where the gang operates are indexed, so we can find which gangs
-    # operate in a city. This index is a collection of redis sets.
+    # - A fighter can only be the leader of one gang. This index is a redis
+    #   hash.
+    # - Members are indexed uniquely. That means a fighter can be in one gang
+    #   only. This index is a single redis hash.
+    # - Cities where the gang operates are indexed, so we can find which gangs
+    #   operate in a city. This index is a collection of redis sets.
+    # - The headquarter city (hqcity) is listed: This means that redis lists
+    #   exist containing gangs with their headquarters in each city. This is
+    #   similar to indexed, but a list is used instead of a set. This is great
+    #   to keep the elements sorted by creation time, but it's bad for removing
+    #   or searching.
     class Gang(Model):
         name = Attribute()
         leader = ReferenceField(Fighter, unique = True)
         members = SetField(Fighter, unique = True)
         cities = SetField(City, indexed = True)
+        hqcity = ReferenceField(City, listed = True)
 
     # Skill that fighters can have.
     class Skill(Model):
@@ -379,6 +386,15 @@ Find in non unique index:
     # find all fighters which are currently in city number 1;
     # the result is a set of Fighter handles
     city_fighters = Fighter.multifind(city = City.by_id(1))
+
+For fields which are 'listed' instead of 'indexed', use getlist:
+
+::
+
+    # find all gangs with headquarters in a given city
+    gangs_by_hqcity = Gang.getlist(hqcity = City.by_id(3))
+    # get the first 10 elements only
+    first_gangs_by_hqcity = Gang.getlist(0, 9, hqcity = City.by_id(3))
 
 Find in unique container index:
 

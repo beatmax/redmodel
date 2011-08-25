@@ -569,6 +569,12 @@ class ModelReadTestCase(ModelTestCase):
         self.assertEqual(powerful_weapons1, (hweapon1, hweapon3))
         self.assertEqual(powerful_weapons1, powerful_weapons2)
 
+        gangs_by_hqcity = Gang.getlist(hqcity = city3)
+        self.assertEqual(gangs_by_hqcity, [Gang.by_id(1), Gang.by_id(2)])
+
+        first_gang_by_hqcity = Gang.getlist(0, 0, hqcity = city3)
+        self.assertEqual(first_gang_by_hqcity, [Gang.by_id(1)])
+
 
 def all_tests():
     suite = unittest.TestSuite()
