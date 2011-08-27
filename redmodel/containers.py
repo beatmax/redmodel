@@ -21,7 +21,10 @@ class Error(Exception):
     pass
 
 class UniqueError(Error):
-    pass
+    def __init__(self, key, value):
+        self.key = key
+        self.value = value
+        Error.__init__(self, key + '<' + str(value) + '>')
 
 class BadArgsError(Error):
     pass
@@ -189,7 +192,7 @@ class ContainerWriter(object):
         elif self.unique_index:
             #TODO watch (optimistic lock) to allow multithread?
             if ds.hexists(self.index_key, value):
-                raise UniqueError(self.index_key + '<' + str(value) + '>')
+                raise UniqueError(self.index_key, value)
             else:
                 pl = ds.pipeline(True)
                 self.raw_append(pl, hcont, value, score)

@@ -30,7 +30,7 @@ class ModelWriter(object):
         #TODO watch (optimistic lock) to allow multithread?
         k = 'u:{0}:{1}'.format(self.modname, fld)
         if ds.hexists(k, val):
-            raise UniqueError(k + '<' + str(val) + '>')
+            raise UniqueError(k, val)
 
     def __index(self, pl, oid, fld, val, unique):
         if unique:
