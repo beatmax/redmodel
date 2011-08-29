@@ -58,6 +58,12 @@ class SetHandle(ContainerHandle):
         d = ds.smembers(self.key)
         return self._transform(d)
 
+    def sismember(self, value):
+        assert type(value) is self.target_type or (hasattr(value, 'model') and value.model is self.target_type)
+        if hasattr(self.target_type, 'oid'):
+            value = value.oid
+        return ds.sismember(self.key, value)
+
 class SortedSetHandle(ContainerHandle):
     def zfind(self, **kwargs):
         assert len(kwargs) == 1
