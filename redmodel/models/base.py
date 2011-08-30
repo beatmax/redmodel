@@ -23,7 +23,7 @@ from redmodel.models.exceptions import NotFoundError, BadArgsError
 class Handle(object):
     def __init__(self, model, oid):
         self.model = model
-        self.oid = str(oid) if oid else oid
+        self.oid = str(oid) if oid else '0'
 
     def __repr__(self):
         return '<{0}: {1}>'.format(self.__class__.__name__, self.key)
@@ -38,7 +38,7 @@ class Handle(object):
         return hash(self.oid)
 
     def __nonzero__(self):
-        return bool(self.oid)
+        return bool(int(self.oid))
 
     @property
     def key(self):
