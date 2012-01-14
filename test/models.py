@@ -22,6 +22,7 @@ from test import example_data
 from test.example_models import City, Weapon, Fighter, Gang, Skill, SkillInstance, FighterSkillList
 from redmodel.models import SetField, ModelWriter, ListFieldWriter, SetFieldWriter, SortedSetFieldWriter, NotFoundError, UniqueError, BadArgsError
 from redmodel.containers import List, Set, SortedSet, ListHandle, SetHandle, SortedSetHandle, ListWriter, SetWriter, SortedSetWriter
+import redmodel
 from redmodel import connection as ds
 
 
@@ -585,6 +586,7 @@ def all_tests():
 
 
 if __name__ == "__main__":
+    #redmodel.connection_setup(unix_socket_path='/tmp/redis.sock')
     if len(sys.argv) > 1:
         unittest.main()
     else:

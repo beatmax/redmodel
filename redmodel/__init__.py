@@ -29,19 +29,24 @@ class Client(object):
     def update(self, d):
         self.connection_settings.update(d)
 
+class ClientProxy(object):
+    def __getattr__(self, name):
+        return getattr(get_client(), name)
+
 def connection_setup(**kwargs):
-    global connection, client
+    global connection_real, client
     if client:
         client.update(kwargs)
     else:
         client = Client(**kwargs)
-    connection = client.redis()
+    connection_real = client.redis()
 
 def get_client():
-    global connection
-    return connection
+    global connection_real
+    return connection_real
 
 client = Client()
-connection = client.redis()
+connection_real = client.redis()
+connection = ClientProxy()
 
 __all__ = ['connection_setup', 'get_client']
